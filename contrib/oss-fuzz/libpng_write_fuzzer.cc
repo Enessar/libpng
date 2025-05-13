@@ -1,12 +1,4 @@
-// Force our png_* calls to map to the OSS_FUZZ_–prefixed symbols
-#define png_create_write_struct   OSS_FUZZ_png_create_write_struct
-#define png_create_info_struct    OSS_FUZZ_png_create_info_struct
-#define png_set_write_fn          OSS_FUZZ_png_set_write_fn
-#define png_set_IHDR              OSS_FUZZ_png_set_IHDR
-#define png_write_info            OSS_FUZZ_png_write_info
-#define png_write_image           OSS_FUZZ_png_write_image
-#define png_write_end             OSS_FUZZ_png_write_end
-#define png_destroy_write_struct  OSS_FUZZ_png_destroy_write_struct
+
 // libpng_write_fuzzer.cc
 #include <png.h>
 #include <stddef.h>
