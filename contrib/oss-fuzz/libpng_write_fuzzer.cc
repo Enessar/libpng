@@ -12,16 +12,31 @@ static void write_data_fn(png_structp png_ptr, png_bytep data, png_size_t length
     out->insert(out->end(), data, data + length);
 }
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-    // 1. Parse input as an uncompressed image: width/height + raw pixels
-    if (size < 8) return 0;
-    uint32_t width  = (data[0]  << 24) | (data[1]  << 16)
-                    | (data[2]  <<  8) |  data[3];
-    uint32_t height = (data[4]  << 24) | (data[5]  << 16)
-                    | (data[6]  <<  8) |  data[7];
-    size_t expected = size_t(width) * height * 4 + 8;
-    if (expected != size) return 0;
+static void png_noop_error(png_structp, png_const_charp) {}
+static void png_noop_warn(png_structp, png_const_charp) {}
 
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+    if (size < 8) return 0;
+    uint32_t width  = (data[0]<<24)|(data[1]<<16)|(data[2]<<8)|data[3];
+    uint32_t height = (data[4]<<24)|(data[5]<<16)|(data[6]<<8)|data[7];
+
+    // Guard against zero or absurd dimensions
+    if (width == 0 || height == 0 || width > 10000 || height > 10000)
+      return 0;
+
+    // Create write struct with our no-op error handlers
+    png_structp png_ptr = png_create_write_struct(
+        PNG_LIBPNG_VER_STRING,
+        nullptr,          // error_ptr (unused)
+        png_noop_error,   // error_fn
+        png_noop_warn);   // warning_fn
+    if (!png_ptr) return 0;
+
+    png_infop info_ptr = png_create_info_struct(png_ptr);
+    if (!info_ptr) {
+      png_destroy_write_struct(&png_ptr, nullptr);
+      return 0;
+    }
     png_structp png_ptr = png_create_write_struct(
         PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
     if (!png_ptr) return 0;
