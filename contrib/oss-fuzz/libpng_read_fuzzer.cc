@@ -211,8 +211,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
-  png_structp png_ptr2 = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  png_infop info_ptr2 = png_create_info_struct(png_ptr2);
+  png_ptr2 = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  info_ptr2 = png_create_info_struct(png_ptr2);
   if (!png_ptr2 || !info_ptr2) {
     if (png_ptr2) png_destroy_read_struct(&png_ptr2, nullptr, nullptr);
     if (info_ptr2) png_destroy_info_struct(png_ptr2, &info_ptr2);
