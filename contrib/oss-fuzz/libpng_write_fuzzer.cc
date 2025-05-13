@@ -37,14 +37,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       png_destroy_write_struct(&png_ptr, nullptr);
       return 0;
     }
-    png_structp png_ptr = png_create_write_struct(
-        PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-    if (!png_ptr) return 0;
-    png_infop info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr) {
-        png_destroy_write_struct(&png_ptr, nullptr);
-        return 0;
-    }
 
     // 2. Set up our in-memory writer
     std::vector<uint8_t> outbuf;
