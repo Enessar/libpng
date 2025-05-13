@@ -54,6 +54,8 @@ find $SRC/libpng -name "*.png" | grep -v crashers | \
 cp $SRC/libpng/contrib/oss-fuzz/*.dict \
      $SRC/libpng/contrib/oss-fuzz/*.options $OUT/
 
-# add seed corpus for write fuzzer.
+# run our generator script (requires Pillow)
+python3 $SRC/libpng/contrib/oss-fuzz/generate_write_seeds.py
+# put the ZIP into $OUT so libFuzzer picks it up
 cp $SRC/libpng/contrib/oss-fuzz/libpng_write_fuzzer_seed_corpus.zip \
-     $OUT/libpng_write_fuzzer_seed_corpus.zip
+$OUT/libpng_write_fuzzer_seed_corpus.zip
