@@ -26,7 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   uint32_t height = (data[4]<<24)|(data[5]<<16)|(data[6]<<8)|data[7];
 
   // Bail on zero or overly large dimensions
-  if (width == 0 || height == 0 || width > 64 || height > 64)
+  if (width == 0 || height == 0 || width > 128 || height > 128)
     return 0;
 
   // Create write struct with no-op handlers
