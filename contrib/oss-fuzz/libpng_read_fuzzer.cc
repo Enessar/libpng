@@ -238,7 +238,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // Use similar transforms as in the main harness
   int transforms = PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_GRAY_TO_RGB |
                   PNG_TRANSFORM_PACKING | PNG_TRANSFORM_SCALE_16 |
-                  PNG_TRANSFORM_STRIP_ALPHA;  // You may modify these as needed
+                  PNG_TRANSFORM_STRIP_ALPHA;  
 
   png_read_png(png_ptr2, info_ptr2, transforms, nullptr);
 
