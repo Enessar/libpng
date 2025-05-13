@@ -53,3 +53,7 @@ find $SRC/libpng -name "*.png" | grep -v crashers | \
 
 cp $SRC/libpng/contrib/oss-fuzz/*.dict \
      $SRC/libpng/contrib/oss-fuzz/*.options $OUT/
+
+# add seed corpus for write fuzzer.
+cp $SRC/libpng/contrib/oss-fuzz/libpng_write_fuzzer_seed_corpus.zip \
+     $OUT/libpng_write_fuzzer_seed_corpus.zip
