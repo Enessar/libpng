@@ -119,7 +119,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (!png_handler.png_ptr) {
     return 0;
   }
-
+  i
   png_handler.info_ptr = png_create_info_struct(png_handler.png_ptr);
   if (!png_handler.info_ptr) {
     PNG_CLEANUP
@@ -203,49 +203,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   png_read_end(png_handler.png_ptr, png_handler.end_info_ptr);
 
   PNG_CLEANUP
-
-
-  // ==== Now test png_read_png =====================================================================================
-  // Rewind buffer state
-  //if (size < kPngHeaderSize || png_sig_cmp(data, 0, kPngHeaderSize)) {
-  //  return 0;
-  //}
-//
-  //png_ptr2 = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  //info_ptr2 = png_create_info_struct(png_ptr2);
-  //if (!png_ptr2 || !info_ptr2) {
-  //  if (png_ptr2) png_destroy_read_struct(&png_ptr2, nullptr, nullptr);
-  //  if (info_ptr2) png_destroy_info_struct(png_ptr2, &info_ptr2);
-  //  return 0;
-  //}
-//
-  //// Memory allocation functions
-  //png_set_mem_fn(png_ptr2, nullptr, limited_malloc, default_free);
-//
-  //// Set buffer for second png_ptr
-  //BufState* buf_state2 = new BufState();
-  //buf_state2->data = data + kPngHeaderSize;
-  //buf_state2->bytes_left = size - kPngHeaderSize;
-  //png_set_read_fn(png_ptr2, buf_state2, user_read_data);
-  //png_set_sig_bytes(png_ptr2, kPngHeaderSize);
-//
-  //if (setjmp(png_jmpbuf(png_ptr2))) {
-  //  png_destroy_read_struct(&png_ptr2, &info_ptr2, nullptr);
-  //  delete buf_state2;
-  //  return 0;
-  //}
-//
-  //// Use similar transforms as in the main harness
-  //int transforms = PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_GRAY_TO_RGB |
-  //                PNG_TRANSFORM_PACKING | PNG_TRANSFORM_SCALE_16 |
-  //                PNG_TRANSFORM_STRIP_ALPHA;  // You may modify these as needed
-//
-  //png_read_png(png_ptr2, info_ptr2, transforms, nullptr);
-//
-  //png_destroy_read_struct(&png_ptr2, &info_ptr2, nullptr);
-  //delete buf_state2;
-
-  // ---------------------------------------- Code stops here --------------------------------------
 
 #ifdef PNG_SIMPLIFIED_READ_SUPPORTED
   // Simplified READ API
