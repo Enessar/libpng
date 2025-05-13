@@ -6,13 +6,13 @@ This script:
  1. Finds all PNG files under $SRC/libpng (excluding any path containing "crashers").
  2. Converts each PNG to a binary seed of the form [width][height][RGBA bytes], clamping dimensions to ≤64×64.
  3. Generates synthetic pattern seeds at power-of-two sizes.
- 4. Packages all .bin seeds into libpng_write_fuzzer_seed_corpus.zip for OSS-Fuzz.
+ 4. Packages all .bin seeds into libpng_write_fuzzer_seed_corpus.zip for OSS-Fuzz, placing it alongside this script.
 
 Usage:
   1. Place this file in contrib/oss-fuzz/ alongside your build.sh.
   2. Ensure Pillow is installed in your fuzzer Docker environment.
   3. During build, run: python3 generate_write_seeds.py
-  4. Copy the resulting ZIP into $OUT in build.sh.
+  4. Copy the resulting ZIP from this folder into $OUT in build.sh.
 """
 import os
 import struct
@@ -72,23 +72,21 @@ def make_pattern_seed(w: int, h: int, kind: str, out_path: Path):
 
 
 def main():
-    # Determine source directory for libpng
+    # Determine directories
+    script_dir = Path(__file__).resolve().parent
     SRC = Path(os.environ.get("SRC", "."))
-    INPUT_DIR = SRC / "libpng"
+    input_dir = SRC / "libpng"
 
     # Output folder for .bin seeds
-    OUT_DIR = Path("write_seed_bins")
-    OUT_DIR.mkdir(exist_ok=True)
+    out_dir = script_dir / "write_seed_bins"
+    out_dir.mkdir(exist_ok=True)
 
-    # 1) Find all .png files under src/libpng, excluding any path containing 'crashers'
-    png_paths = [
-        p for p in INPUT_DIR.rglob("*.png")
-        if "crashers" not in str(p)
-    ]
+    # 1) Find all .png files under src/libpng, excluding 'crashers'
+    png_paths = [p for p in input_dir.rglob("*.png") if "crashers" not in str(p)]
 
     # 2) Convert each PNG to a .bin seed
     for idx, png_path in enumerate(png_paths):
-        seed_file = OUT_DIR / f"png_{idx}.bin"
+        seed_file = out_dir / f"png_{idx}.bin"
         try:
             png_to_seed(png_path, seed_file)
         except Exception as e:
@@ -100,16 +98,16 @@ def main():
     for w in sizes:
         for h in sizes:
             for kind in kinds:
-                out_file = OUT_DIR / f"{w}x{h}_{kind}.bin"
+                out_file = out_dir / f"{w}x{h}_{kind}.bin"
                 make_pattern_seed(w, h, kind, out_file)
 
-    # 4) Zip all .bin files into the final seed corpus
-    zip_name = "libpng_write_fuzzer_seed_corpus.zip"
+    # 4) Zip all .bin files into the final seed corpus alongside this script
+    zip_name = script_dir / "libpng_write_fuzzer_seed_corpus.zip"
     with zipfile.ZipFile(zip_name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
-        for seed in sorted(OUT_DIR.iterdir()):
+        for seed in sorted(out_dir.iterdir()):
             zf.write(seed, seed.name)
 
-    print(f"Generated {zip_name} with {len(list(OUT_DIR.iterdir()))} seeds.")
+    print(f"Generated {zip_name} with {len(list(out_dir.iterdir()))} seeds.")
 
 
 if __name__ == "__main__":
