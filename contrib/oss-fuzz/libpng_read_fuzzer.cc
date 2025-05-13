@@ -119,7 +119,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if (!png_handler.png_ptr) {
     return 0;
   }
-  i
+  
   png_handler.info_ptr = png_create_info_struct(png_handler.png_ptr);
   if (!png_handler.info_ptr) {
     PNG_CLEANUP
