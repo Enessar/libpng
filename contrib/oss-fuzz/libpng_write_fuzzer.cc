@@ -1,10 +1,9 @@
-// libpng_write_fuzzer.cc
 #include <png.h>
-#include <zlib.h>            // for Z_FILTERED, Z_DEFAULT_STRATEGY
+#include <zlib.h>
 #include <vector>
 #include <cstdint>
-#include <cstring>           // memcpy, memset
-#include <algorithm>         // std::min
+#include <cstring>
+#include <algorithm>
 
 #if defined(__has_feature)
 # if __has_feature(address_sanitizer)
@@ -12,43 +11,54 @@
 # endif
 #endif
 
-// Helpers to read big-endian integers from the fuzzer buffer:
-#define BE32(p) ((uint32_t)(p)[0]<<24 | (uint32_t)(p)[1]<<16 | (uint32_t)(p)[2]<<8  | (uint32_t)(p)[3])
-#define BE16(p) ((uint16_t)(p)[0]<<8  | (uint16_t)(p)[1])
+#define BE32(p) ((uint32_t)(p)[0]<<24 | (uint32_t)(p)[1]<<16 | (uint32_t)(p)[2]<<8 | (uint32_t)(p)[3])
+#define BE16(p) ((uint16_t)(p)[0]<<8 | (uint16_t)(p)[1])
 
-// No-op error/warning handlers avoid abort().
 static void png_noop_error(png_structp, png_const_charp) {}
 static void png_noop_warn (png_structp, png_const_charp) {}
 
-// In-memory write callback: collect output bytes.
-static void write_data_fn(png_structp png_ptr,
-                          png_bytep   data,
-                          png_size_t  length) {
-  auto* out = static_cast<std::vector<uint8_t>*>(
-      png_get_io_ptr(png_ptr));
+static void write_data_fn(png_structp png_ptr, png_bytep data, png_size_t length) {
+  auto* out = static_cast<std::vector<uint8_t>*>(png_get_io_ptr(png_ptr));
   out->insert(out->end(), data, data + length);
 }
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
-                                      size_t         size) {
+struct HarnessBuffers {
+  std::vector<uint8_t> outbuf;
+  std::vector<std::vector<png_byte>> safe_rows;
+  std::vector<png_bytep> row_ptrs;
 
+  void init_rows(uint32_t height, size_t rowbytes) {
+    safe_rows.resize(height, std::vector<png_byte>(rowbytes));
+    row_ptrs.resize(height);
+    for (uint32_t y = 0; y < height; ++y)
+      row_ptrs[y] = safe_rows[y].data();
+  }
 
-  // only disable LSan when building with -fsanitize=address
-  #if defined(__has_feature)
-  # if __has_feature(address_sanitizer)
-    __lsan_disable();
-  # endif
-  #endif
+  void cleanup() {
+    outbuf.clear();
+    outbuf.shrink_to_fit();
+    for (auto& row : safe_rows) {
+      row.clear();
+      row.shrink_to_fit();
+    }
+    safe_rows.clear();
+    safe_rows.shrink_to_fit();
+    row_ptrs.clear();
+    row_ptrs.shrink_to_fit();
+  }
+};
+
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
 
   if (size < 24) return 0;
+
   uint32_t width  = BE32(data + 0);
   uint32_t height = BE32(data + 4);
   if (!width || !height || width > 64 || height > 64)
     return 0;
 
   png_structp png_ptr = png_create_write_struct(
-      PNG_LIBPNG_VER_STRING, nullptr,
-      png_noop_error, png_noop_warn);
+      PNG_LIBPNG_VER_STRING, nullptr, png_noop_error, png_noop_warn);
   if (!png_ptr) return 0;
 
   png_infop info_ptr = png_create_info_struct(png_ptr);
@@ -57,44 +67,32 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
     return 0;
   }
 
-  // Install jump handler: any libpng error will longjmp back here instead of abort()
+  HarnessBuffers buffers;
+
   if (setjmp(png_jmpbuf(png_ptr))) {
-    // Clean up and return
     png_destroy_write_struct(&png_ptr, &info_ptr);
+    buffers.cleanup();  // Ensure cleanup on error path
     return 0;
   }
 
-  std::vector<uint8_t> outbuf;
-  png_set_write_fn(png_ptr, &outbuf, write_data_fn, nullptr);
+  png_set_write_fn(png_ptr, &buffers.outbuf, write_data_fn, nullptr);
 
-  // 1) decode options from data[8..]
-  int interlace   = (data[8]  & 1) ? PNG_INTERLACE_ADAM7 : PNG_INTERLACE_NONE;
-  int filter_mask = data[9] & (PNG_FILTER_NONE
-                             | PNG_FILTER_SUB
-                             | PNG_FILTER_UP
-                             | PNG_FILTER_AVG
-                             | PNG_FILTER_PAETH);
+  int interlace   = (data[8] & 1) ? PNG_INTERLACE_ADAM7 : PNG_INTERLACE_NONE;
+  int filter_mask = data[9] & (PNG_FILTER_NONE | PNG_FILTER_SUB |
+                               PNG_FILTER_UP | PNG_FILTER_AVG | PNG_FILTER_PAETH);
   int comp_level  = 1 + (data[10] % 9);
   int comp_strat  = (data[11] & 1) ? Z_DEFAULT_STRATEGY : Z_FILTERED;
 
-  // 2) IHDR
-  png_set_IHDR(png_ptr, info_ptr,
-               width, height,
-               8,
-               PNG_COLOR_TYPE_RGBA,
-               interlace,
-               PNG_COMPRESSION_TYPE_DEFAULT,
-               PNG_FILTER_TYPE_DEFAULT);
+  png_set_IHDR(png_ptr, info_ptr, width, height, 8,
+               PNG_COLOR_TYPE_RGBA, interlace,
+               PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
-  // override defaults
   png_set_compression_level(png_ptr, comp_level);
   png_set_compression_strategy(png_ptr, comp_strat);
   png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, filter_mask);
   png_set_interlace_handling(png_ptr);
 
-  // 3) ancillary chunks
   if (size >= 19) {
-    // tIME
     png_time mod_time;
     uint16_t yr = BE16(data + 12);
     mod_time.year   = yr ? yr : 2025;
@@ -113,21 +111,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
 
   if (size > 20) {
     int intent = (data[20] & 1)
-               ? PNG_sRGB_INTENT_PERCEPTUAL
-               : PNG_sRGB_INTENT_SATURATION;
+                 ? PNG_sRGB_INTENT_PERCEPTUAL
+                 : PNG_sRGB_INTENT_SATURATION;
     png_set_sRGB(png_ptr, info_ptr, intent);
   }
 
-  // *** FIXED SIGNATURE: pass info_ptr as 2nd argument ***
-  // cHRM_fixed
   png_set_cHRM_fixed(png_ptr, info_ptr,
-                     31270, 32900,   // white point
-                     64000, 33000,   // red
-                     30000, 60000,   // green
-                     15000, 6000);   // blue
+                     31270, 32900,
+                     64000, 33000,
+                     30000, 60000,
+                     15000, 6000);
 
   if (size > 21) {
-    // tEXt
     png_text text_chunk;
     text_chunk.compression = PNG_TEXT_COMPRESSION_NONE;
     text_chunk.key         = (png_charp)"FuzzComment";
@@ -136,71 +131,45 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   }
 
   if (size > 22) {
-    // pHYs
-    png_set_pHYs(png_ptr, info_ptr,
-                 300, 300,
-                 PNG_RESOLUTION_METER);
+    png_set_pHYs(png_ptr, info_ptr, 300, 300, PNG_RESOLUTION_METER);
   }
 
-  // 4) row buffers
   size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
   size_t data_off = 16;
-  std::vector<std::vector<png_byte>> safe_rows(
-      height, std::vector<png_byte>(rowbytes));
+  buffers.init_rows(height, rowbytes);
   for (uint32_t y = 0; y < height; ++y) {
-    size_t avail  = (data_off + y*rowbytes < size)
-                  ? size - (data_off + y*rowbytes)
-                  : 0;
+    size_t offset = data_off + y * rowbytes;
+    size_t avail = (offset < size) ? size - offset : 0;
     size_t to_copy = std::min(rowbytes, avail);
-    memcpy(safe_rows[y].data(),
-           data + data_off + y*rowbytes,
-           to_copy);
-    if (to_copy < rowbytes) {
-      memset(safe_rows[y].data() + to_copy, 0, rowbytes - to_copy);
-    }
+    memcpy(buffers.safe_rows[y].data(), data + offset, to_copy);
+    if (to_copy < rowbytes)
+      memset(buffers.safe_rows[y].data() + to_copy, 0, rowbytes - to_copy);
   }
-  std::vector<png_bytep> row_ptrs(height);
-  for (uint32_t y = 0; y < height; ++y)
-    row_ptrs[y] = safe_rows[y].data();
 
-  // 5) unknown chunk
-  size_t used = data_off + height*rowbytes;
+  size_t used = data_off + height * rowbytes;
   if (size > used + 4) {
     size_t uc_len = std::min(size - used, (size_t)32);
     png_unknown_chunk uc;
     memcpy(uc.name, data + 0, 4);
-    uc.name[4]   = 0;
-    uc.data      = (png_bytep)(data + used);
-    uc.size      = (png_uint_32)uc_len;
-    uc.location  = PNG_AFTER_IDAT;
-    
+    uc.name[4] = 0;
+    uc.data = (png_bytep)(data + used);
+    uc.size = (png_uint_32)uc_len;
+    uc.location = PNG_AFTER_IDAT;
     png_set_unknown_chunks(png_ptr, info_ptr, &uc, 1);
-    png_set_unknown_chunk_location(png_ptr, info_ptr,0, PNG_AFTER_IDAT);
+    png_set_unknown_chunk_location(png_ptr, info_ptr, 0, PNG_AFTER_IDAT);
   }
 
-  // 6) write
   png_write_info(png_ptr, info_ptr);
   if (data[23] & 1) {
-    png_write_image(png_ptr, row_ptrs.data());
+    png_write_image(png_ptr, buffers.row_ptrs.data());
   } else {
     for (uint32_t y = 0; y < height; ++y)
-      png_write_row(png_ptr, row_ptrs[y]);
+      png_write_row(png_ptr, buffers.row_ptrs[y]);
   }
   png_write_end(png_ptr, info_ptr);
 
-  // 7) cleanup
-  png_free_data(png_ptr, info_ptr, PNG_FREE_ALL, -1);
-  // 2) Destroy the info struct itself
-  png_destroy_info_struct(png_ptr, &info_ptr);
-
   png_destroy_write_struct(&png_ptr, &info_ptr);
-
-  // re-enable LSan here if we disabled it
-  #if defined(__has_feature)
-  # if __has_feature(address_sanitizer)
-    __lsan_enable();
-  # endif
-  #endif
+  buffers.cleanup();
 
   return 0;
 }
