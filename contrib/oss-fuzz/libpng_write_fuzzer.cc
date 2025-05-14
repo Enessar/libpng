@@ -6,6 +6,12 @@
 #include <cstring>           // memcpy, memset
 #include <algorithm>         // std::min
 
+#if defined(__has_feature)
+# if __has_feature(address_sanitizer)
+#  include <sanitizer/lsan_interface.h>
+# endif
+#endif
+
 // Helpers to read big-endian integers from the fuzzer buffer:
 #define BE32(p) ((uint32_t)(p)[0]<<24 | (uint32_t)(p)[1]<<16 | (uint32_t)(p)[2]<<8  | (uint32_t)(p)[3])
 #define BE16(p) ((uint16_t)(p)[0]<<8  | (uint16_t)(p)[1])
@@ -25,6 +31,15 @@ static void write_data_fn(png_structp png_ptr,
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
                                       size_t         size) {
+
+
+  // only disable LSan when building with -fsanitize=address
+  #if defined(__has_feature)
+  # if __has_feature(address_sanitizer)
+    __lsan_disable();
+  # endif
+  #endif
+
   if (size < 24) return 0;
   uint32_t width  = BE32(data + 0);
   uint32_t height = BE32(data + 4);
@@ -176,5 +191,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   // 7) cleanup
   png_destroy_write_struct(&png_ptr, &info_ptr);
   (void)outbuf.size();
+
+  // re-enable LSan here if we disabled it
+  #if defined(__has_feature)
+  # if __has_feature(address_sanitizer)
+    __lsan_enable();
+  # endif
+  #endif
+
   return 0;
 }

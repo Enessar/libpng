@@ -59,5 +59,3 @@ python3 $SRC/libpng/contrib/oss-fuzz/generate_write_seeds.py
 cp $SRC/libpng/contrib/oss-fuzz/libpng_write_fuzzer_seed_corpus.zip \
      $OUT/libpng_write_fuzzer_seed_corpus.zip
 
-# Disable leak detection at run time (we don’t link LSan in coverage builds)
-cp $SRC/libpng/contrib/oss-fuzz/*.options $OUT/
