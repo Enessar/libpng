@@ -4,9 +4,9 @@ generate_write_seeds.py
 
 This script:
  1. Finds all PNG files under $SRC/libpng (excluding any path containing "crashers").
- 2. Converts each PNG to a binary seed of the form [width][height][RGBA bytes], clamping dimensions to ≤64×64.
+ 2. Converts each PNG to a binary seed of the form [width][height][RGBA bytes], clamping dimensions to ≤128×128.
  3. Generates synthetic pattern seeds at power-of-two sizes.
- 4. Packages all .bin seeds into libpng_write_fuzzer_seed_corpus.zip for OSS-Fuzz, placing it alongside this script.
+ 4. Packages all .bin seeds into libpng_write_fuzzer_seed_corpus.zip for OSS-Fuzz, placing them inside a folder `write_seed_bins/` within the zip.
 
 Usage:
   1. Place this file in contrib/oss-fuzz/ alongside your build.sh.
@@ -101,11 +101,13 @@ def main():
                 out_file = out_dir / f"{w}x{h}_{kind}.bin"
                 make_pattern_seed(w, h, kind, out_file)
 
-    # 4) Zip all .bin files into the final seed corpus alongside this script
+    # 4) Zip all .bin files into the final seed corpus
     zip_name = script_dir / "libpng_write_fuzzer_seed_corpus.zip"
     with zipfile.ZipFile(zip_name, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
         for seed in sorted(out_dir.iterdir()):
-            zf.write(seed, seed.name)
+            # Place each file inside write_seed_bins/ folder within the zip
+            arcname = f"{out_dir.name}/{seed.name}"
+            zf.write(seed, arcname)
 
     print(f"Generated {zip_name} with {len(list(out_dir.iterdir()))} seeds.")
 
