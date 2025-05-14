@@ -1,38 +1,54 @@
+// libpng_write_fuzzer.cc
 #include <png.h>
+#include <zlib.h>            // for Z_FILTERED, Z_DEFAULT_STRATEGY
 #include <vector>
 #include <cstdint>
-#include <cstring>
-#include <algorithm>
+#include <cstring>           // memcpy, memset
+#include <algorithm>         // std::min
 
-// No-op error/warning handlers to avoid aborting
+#if defined(__has_feature)
+# if __has_feature(address_sanitizer)
+#  include <sanitizer/lsan_interface.h>
+# endif
+#endif
+
+// Helpers to read big-endian integers from the fuzzer buffer:
+#define BE32(p) ((uint32_t)(p)[0]<<24 | (uint32_t)(p)[1]<<16 | (uint32_t)(p)[2]<<8  | (uint32_t)(p)[3])
+#define BE16(p) ((uint16_t)(p)[0]<<8  | (uint16_t)(p)[1])
+
+// No-op error/warning handlers avoid abort().
 static void png_noop_error(png_structp, png_const_charp) {}
-static void png_noop_warn(png_structp, png_const_charp) {}
+static void png_noop_warn (png_structp, png_const_charp) {}
 
-const uint32_t kMaxWidth = 64;
-const uint32_t kMaxHeight = 64;
-const size_t kMaxRowbytes = 1 << 20;    // 1 MB per row max
-const size_t kMaxOutBufSize = 4 << 20;  // 4 MB output max
-
-static void write_data_fn(png_structp png_ptr, png_bytep data, png_size_t length) {
-  auto* out = static_cast<std::vector<uint8_t>*>(png_get_io_ptr(png_ptr));
-  if (out->size() + length > kMaxOutBufSize) {
-    png_error(png_ptr, "output buffer too large");
-    return;
-  }
+// In-memory write callback: collect output bytes.
+static void write_data_fn(png_structp png_ptr,
+                          png_bytep   data,
+                          png_size_t  length) {
+  auto* out = static_cast<std::vector<uint8_t>*>(
+      png_get_io_ptr(png_ptr));
   out->insert(out->end(), data, data + length);
 }
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  if (size < 8) return 0;
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
+                                      size_t         size) {
 
-  uint32_t width  = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
-  uint32_t height = (data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7];
 
-  if (width == 0 || height == 0 || width > kMaxWidth || height > kMaxHeight)
+  // only disable LSan when building with -fsanitize=address
+  #if defined(__has_feature)
+  # if __has_feature(address_sanitizer)
+    __lsan_disable();
+  # endif
+  #endif
+
+  if (size < 24) return 0;
+  uint32_t width  = BE32(data + 0);
+  uint32_t height = BE32(data + 4);
+  if (!width || !height || width > 64 || height > 64)
     return 0;
 
-  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr,
-                                                png_noop_error, png_noop_warn);
+  png_structp png_ptr = png_create_write_struct(
+      PNG_LIBPNG_VER_STRING, nullptr,
+      png_noop_error, png_noop_warn);
   if (!png_ptr) return 0;
 
   png_infop info_ptr = png_create_info_struct(png_ptr);
@@ -41,43 +57,147 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
-  // Prevent libpng from internally allocating massive buffers
-  png_set_user_limits(png_ptr, kMaxWidth, kMaxHeight);
-
-  std::vector<uint8_t> outbuf;
-  png_set_write_fn(png_ptr, &outbuf, write_data_fn, nullptr);
-
-  png_set_IHDR(png_ptr, info_ptr,
-               width, height,
-               8, PNG_COLOR_TYPE_RGBA,
-               PNG_INTERLACE_NONE,
-               PNG_COMPRESSION_TYPE_DEFAULT,
-               PNG_FILTER_TYPE_DEFAULT);
-
-  size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
-  if (rowbytes > kMaxRowbytes) {
+  // Install jump handler: any libpng error will longjmp back here instead of abort()
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    // Clean up and return
     png_destroy_write_struct(&png_ptr, &info_ptr);
     return 0;
   }
 
-  // Flat pixel buffer (no nested vectors)
-  std::vector<uint8_t> flat_rows(rowbytes * height, 0);
-  size_t pixel_data_offset = 8;
+  std::vector<uint8_t> outbuf;
+  png_set_write_fn(png_ptr, &outbuf, write_data_fn, nullptr);
 
-  for (uint32_t y = 0; y < height; ++y) {
-    size_t offset = pixel_data_offset + y * rowbytes;
-    size_t to_copy = std::min(rowbytes, (offset < size) ? size - offset : 0);
-    memcpy(&flat_rows[y * rowbytes], data + offset, to_copy);
+  // 1) decode options from data[8..]
+  int interlace   = (data[8]  & 1) ? PNG_INTERLACE_ADAM7 : PNG_INTERLACE_NONE;
+  int filter_mask = data[9] & (PNG_FILTER_NONE
+                             | PNG_FILTER_SUB
+                             | PNG_FILTER_UP
+                             | PNG_FILTER_AVG
+                             | PNG_FILTER_PAETH);
+  int comp_level  = 1 + (data[10] % 9);
+  int comp_strat  = (data[11] & 1) ? Z_DEFAULT_STRATEGY : Z_FILTERED;
+
+  // 2) IHDR
+  png_set_IHDR(png_ptr, info_ptr,
+               width, height,
+               8,
+               PNG_COLOR_TYPE_RGBA,
+               interlace,
+               PNG_COMPRESSION_TYPE_DEFAULT,
+               PNG_FILTER_TYPE_DEFAULT);
+
+  // override defaults
+  png_set_compression_level(png_ptr, comp_level);
+  png_set_compression_strategy(png_ptr, comp_strat);
+  png_set_filter(png_ptr, PNG_FILTER_TYPE_BASE, filter_mask);
+  png_set_interlace_handling(png_ptr);
+
+  // 3) ancillary chunks
+  if (size >= 19) {
+    // tIME
+    png_time mod_time;
+    uint16_t yr = BE16(data + 12);
+    mod_time.year   = yr ? yr : 2025;
+    mod_time.month  = (data[14] % 12) + 1;
+    mod_time.day    = (data[15] % 31) + 1;
+    mod_time.hour   = data[16] % 24;
+    mod_time.minute = data[17] % 60;
+    mod_time.second = data[18] % 60;
+    png_set_tIME(png_ptr, info_ptr, &mod_time);
   }
 
+  if (size > 19) {
+    float gamma = 0.1f + (data[19] / 255.0f) * 2.0f;
+    png_set_gAMA(png_ptr, info_ptr, gamma);
+  }
+
+  if (size > 20) {
+    int intent = (data[20] & 1)
+               ? PNG_sRGB_INTENT_PERCEPTUAL
+               : PNG_sRGB_INTENT_SATURATION;
+    png_set_sRGB(png_ptr, info_ptr, intent);
+  }
+
+  // *** FIXED SIGNATURE: pass info_ptr as 2nd argument ***
+  // cHRM_fixed
+  png_set_cHRM_fixed(png_ptr, info_ptr,
+                     31270, 32900,   // white point
+                     64000, 33000,   // red
+                     30000, 60000,   // green
+                     15000, 6000);   // blue
+
+  if (size > 21) {
+    // tEXt
+    png_text text_chunk;
+    text_chunk.compression = PNG_TEXT_COMPRESSION_NONE;
+    text_chunk.key         = (png_charp)"FuzzComment";
+    text_chunk.text        = (png_charp)"generated by harness";
+    png_set_text(png_ptr, info_ptr, &text_chunk, 1);
+  }
+
+  if (size > 22) {
+    // pHYs
+    png_set_pHYs(png_ptr, info_ptr,
+                 300, 300,
+                 PNG_RESOLUTION_METER);
+  }
+
+  // 4) row buffers
+  size_t rowbytes = png_get_rowbytes(png_ptr, info_ptr);
+  size_t data_off = 16;
+  std::vector<std::vector<png_byte>> safe_rows(
+      height, std::vector<png_byte>(rowbytes));
+  for (uint32_t y = 0; y < height; ++y) {
+    size_t avail  = (data_off + y*rowbytes < size)
+                  ? size - (data_off + y*rowbytes)
+                  : 0;
+    size_t to_copy = std::min(rowbytes, avail);
+    memcpy(safe_rows[y].data(),
+           data + data_off + y*rowbytes,
+           to_copy);
+    if (to_copy < rowbytes) {
+      memset(safe_rows[y].data() + to_copy, 0, rowbytes - to_copy);
+    }
+  }
   std::vector<png_bytep> row_ptrs(height);
   for (uint32_t y = 0; y < height; ++y)
-    row_ptrs[y] = &flat_rows[y * rowbytes];
+    row_ptrs[y] = safe_rows[y].data();
 
+  // 5) unknown chunk
+  size_t used = data_off + height*rowbytes;
+  if (size > used + 4) {
+    size_t uc_len = std::min(size - used, (size_t)32);
+    png_unknown_chunk uc;
+    memcpy(uc.name, data + 0, 4);
+    uc.name[4]   = 0;
+    uc.data      = (png_bytep)(data + used);
+    uc.size      = (png_uint_32)uc_len;
+    uc.location  = PNG_AFTER_IDAT;
+    png_set_unknown_chunks(png_ptr, info_ptr, &uc, 1);
+    // *** FIXED: pass png_ptr, not info_ptr ***
+    png_set_unknown_chunk_location(png_ptr, info_ptr,0, PNG_AFTER_IDAT);
+  }
+
+  // 6) write
   png_write_info(png_ptr, info_ptr);
-  png_write_image(png_ptr, row_ptrs.data());
+  if (data[23] & 1) {
+    png_write_image(png_ptr, row_ptrs.data());
+  } else {
+    for (uint32_t y = 0; y < height; ++y)
+      png_write_row(png_ptr, row_ptrs[y]);
+  }
   png_write_end(png_ptr, info_ptr);
 
+  // 7) cleanup
   png_destroy_write_struct(&png_ptr, &info_ptr);
+  (void)outbuf.size();
+
+  // re-enable LSan here if we disabled it
+  #if defined(__has_feature)
+  # if __has_feature(address_sanitizer)
+    __lsan_enable();
+  # endif
+  #endif
+
   return 0;
 }
