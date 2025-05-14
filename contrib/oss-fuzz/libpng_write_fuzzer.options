@@ -1,3 +1,4 @@
 [libfuzzer]
 dict = png.dict
 -detect_leaks=0
+-rss_limit_mb=4096

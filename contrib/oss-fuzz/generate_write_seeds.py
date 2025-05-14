@@ -22,7 +22,7 @@ from pathlib import Path
 from PIL import Image
 
 
-def png_to_seed(png_path: Path, out_path: Path, max_dim: int = 128):
+def png_to_seed(png_path: Path, out_path: Path, max_dim: int = 64):
     """
     Load a PNG, clamp dimensions to max_dim×max_dim, and write:
       [4-byte BE width][4-byte BE height][raw RGBA bytes]

@@ -43,7 +43,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   if (size < 24) return 0;
   uint32_t width  = BE32(data + 0);
   uint32_t height = BE32(data + 4);
-  if (!width || !height || width > 128 || height > 128)
+  if (!width || !height || width > 64 || height > 64)
     return 0;
 
   png_structp png_ptr = png_create_write_struct(
