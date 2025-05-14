@@ -52,8 +52,7 @@ static void write_data_fn(png_structp png_ptr,
 /* interlace passes).  Reject anything above 8 MiB to avoid OOM.               */
 static void* limited_malloc(png_structp, png_alloc_size_t sz)
 {
-  return sz > 8'000'000 ? nullptr : malloc(sz);
-}
+  return sz > 8000000 ? nullptr : malloc(sz);}
 static void  default_free  (png_structp, png_voidp p) { free(p); }
 
 /*----------------------------------------------------------------------------*/
