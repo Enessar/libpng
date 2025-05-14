@@ -60,4 +60,4 @@ cp $SRC/libpng/contrib/oss-fuzz/libpng_write_fuzzer_seed_corpus.zip \
      $OUT/libpng_write_fuzzer_seed_corpus.zip
 
 # Disable leak detection at run time (we don’t link LSan in coverage builds)
-export ASAN_OPTIONS=detect_leaks=0
+cp $SRC/libpng/contrib/oss-fuzz/*.options $OUT/
