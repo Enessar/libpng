@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstring>           // memcpy, memset
 #include <algorithm>         // std::min
+#include <pngpriv.h>    // <-- pull in private definitions for png_free_buffer_list
+
 
 #if defined(__has_feature)
 # if __has_feature(address_sanitizer)
@@ -189,8 +191,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   png_write_end(png_ptr, info_ptr);
 
   // 7) cleanup
+  // Removed png_free_buffer_list as it is not part of the libpng API.
+  png_free_buffer_list(png_ptr, &png_ptr->zbuffer_list);
   png_destroy_write_struct(&png_ptr, &info_ptr);
-  (void)outbuf.size();
 
   // re-enable LSan here if we disabled it
   #if defined(__has_feature)
