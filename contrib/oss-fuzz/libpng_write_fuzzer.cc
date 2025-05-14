@@ -42,6 +42,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
     return 0;
   }
 
+  // Install jump handler: any libpng error will longjmp back here instead of abort()
+  if (setjmp(png_jmpbuf(png_ptr))) {
+    // Clean up and return
+    png_destroy_write_struct(&png_ptr, &info_ptr);
+    return 0;
+  }
+
   std::vector<uint8_t> outbuf;
   png_set_write_fn(png_ptr, &outbuf, write_data_fn, nullptr);
 
