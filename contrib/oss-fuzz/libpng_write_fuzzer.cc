@@ -173,6 +173,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
     uc.data      = (png_bytep)(data + used);
     uc.size      = (png_uint_32)uc_len;
     uc.location  = PNG_AFTER_IDAT;
+    png_set_keep_unknown_chunks(png_ptr,
+                           PNG_HANDLE_CHUNK_NEVER,
+                           nullptr,1);
     png_set_unknown_chunks(png_ptr, info_ptr, &uc, 1);
     png_set_unknown_chunk_location(png_ptr, info_ptr,0, PNG_AFTER_IDAT);
   }
