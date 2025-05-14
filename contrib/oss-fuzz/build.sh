@@ -46,6 +46,12 @@ $CXX $CXXFLAGS -std=c++11 -I. \
      -o $OUT/libpng_write_fuzzer \
      -lFuzzingEngine .libs/libpng16.a -lz
 
+$CXX $CXXFLAGS -std=c++11 -I. \
+     $SRC/libpng/contrib/oss-fuzz/libpng_read_fuzzer_BASE.cc \
+     -o $OUT/libpng_read_fuzzer_BASE \
+     -lFuzzingEngine .libs/libpng16.a -lz
+
+
 
 # add seed corpus.
 find $SRC/libpng -name "*.png" | grep -v crashers | \
