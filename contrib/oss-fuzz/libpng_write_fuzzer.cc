@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstring>           // memcpy, memset
 #include <algorithm>         // std::min
-#include <sanitizer/lsan_interface.h>
 
 // Helpers to read big-endian integers from the fuzzer buffer:
 #define BE32(p) ((uint32_t)(p)[0]<<24 | (uint32_t)(p)[1]<<16 | (uint32_t)(p)[2]<<8  | (uint32_t)(p)[3])
@@ -26,9 +25,6 @@ static void write_data_fn(png_structp png_ptr,
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
                                       size_t         size) {
-                                
-  __lsan_disable();   // turn off leak checks for everything that follows
-
   if (size < 24) return 0;
   uint32_t width  = BE32(data + 0);
   uint32_t height = BE32(data + 4);
@@ -180,8 +176,5 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data,
   // 7) cleanup
   png_destroy_write_struct(&png_ptr, &info_ptr);
   (void)outbuf.size();
-
-  __lsan_enable();    // (optional) re-enable at the end
-
   return 0;
 }
