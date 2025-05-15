@@ -205,8 +205,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   PNG_CLEANUP
 
 
-  // ==== Now test png_read_png =====================================================================================
-  // Rewind buffer state
+    // ---------------------------------------- Now test png_read_png -------------------------------------- 
+    
   if (size < kPngHeaderSize || png_sig_cmp(data, 0, kPngHeaderSize)) {
     return 0;
   }
@@ -219,10 +219,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
-  // Memory allocation functions
   png_set_mem_fn(png_ptr2, nullptr, limited_malloc, default_free);
 
-  // Set buffer for second png_ptr
   BufState* buf_state2 = new BufState();
   buf_state2->data = data + kPngHeaderSize;
   buf_state2->bytes_left = size - kPngHeaderSize;
@@ -235,7 +233,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     return 0;
   }
 
-  // Use similar transforms as in the main harness
   int transforms = PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_GRAY_TO_RGB |
                   PNG_TRANSFORM_PACKING | PNG_TRANSFORM_SCALE_16 |
                   PNG_TRANSFORM_STRIP_ALPHA;  
