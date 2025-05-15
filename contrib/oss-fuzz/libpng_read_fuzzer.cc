@@ -205,8 +205,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   PNG_CLEANUP
 
 
-    // ---------------------------------------- Now test png_read_png -------------------------------------- 
-    
+    // -------------------------------------- Test png_read_png -------------------------------------- 
+
   if (size < kPngHeaderSize || png_sig_cmp(data, 0, kPngHeaderSize)) {
     return 0;
   }
